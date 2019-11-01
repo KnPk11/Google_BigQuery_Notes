@@ -1,6 +1,6 @@
 
 -- BigQuery standard syntax
--- Updated: 2019-10-30
+-- Updated: 2019-10-31
 
 							---------- GENERAL -----------
 
@@ -33,11 +33,11 @@ INSERT `project.dataset.table1`
 	MERGE `project.dataset.table1` AS t1
 	USING `project.dataset.table2` AS t2
 	ON t1.col1 = t2.col2
-	WHEN NOT MATCHED AND {condition} THEN
-	INSERT(col1, col2, col3)
-	VALUES(val1, val2, ARRAY<STRUCT<col3a {type}, col3b {type}>>[val3a, val3b)])
 	WHEN MATCHED THEN
-	UDDATE(product, quantity, supply_constrained) -- <!>
+		UPDATE SET col1 = 'val1' -- Or DELETE
+	WHEN NOT MATCHED AND {condition} THEN
+		INSERT(col1, col2, col3)
+	VALUES('val1', 'val2', 'val3')
 
 -- PARTITION BY. Partitions a table by a date column. Reduces cost and speeds up qurying
 	CREATE OR REPLACE TABLE table1  PARTITION BY DATE(date_column) AS
@@ -108,10 +108,7 @@ INSERT `project.dataset.table1`
 	SPLIT(col1, ",")
 
 -- STRUCT. (grouping multiple fields into one category)
-	SELECT STRUCT<INT64, STRING>(35 AS age, 'Jacob' AS name) AS customers
-
-	-- Arrays inside a struct
-	SELECT STRUCT(35 AS age, 'Jacob' AS name, ['apple', 'pear', 'peach'] AS items) AS customers
+	SELECT STRUCT<INT64, STRING>(1 AS col1, 'val' AS col2) AS structed_column
 
 	-- Example of categorising multiple columns into one category
 	WITH table1 AS 
@@ -127,6 +124,9 @@ INSERT `project.dataset.table1`
 -- ARRAY
 	SELECT ARRAY<STRING>['value1', 'value2', 'value3', 'value4'] AS array1
 
+	-- Array inside a struct
+	SELECT STRUCT(1 AS col1, 'val' AS col2, ['a', 'b', 'c'] AS col3) AS structed_col
+
 	-- Array of arrays
 	SELECT ARRAY
 	(
@@ -134,6 +134,40 @@ INSERT `project.dataset.table1`
 		FROM UNNEST(list) AS list_items
 		WHERE 'value1' IN UNNEST(list)
 	) FROM
+
+-- OFFSET. Displays an array value offset by a certain number, starting from 0
+	SELECT array1[OFFSET(2)] -- 3
+	AS zero_indexed
+	FROM (
+	SELECT ARRAY<INT64>[1, 2, 3] AS array1
+	)
+
+	-- WITH OFFSET. Labels each element when unnested.
+	SELECT index, col1
+	FROM UNNEST(['value1', 'value2', 'value3']) AS col1
+	WITH OFFSET AS index
+	ORDER BY index
+
+	-- ORDINAL. Displays an array index starting from 1.
+	SELECT array1[ORDINAL(2)] -- 2
+	AS one_indexed
+	FROM (
+	SELECT ARRAY<INT64>[1, 2, 3] AS array1
+	)
+
+	-- ARRAY_LENGTH. Returns length of an array
+	SELECT ARRAY_LENGTH(array1) -- 3
+	AS zero_size
+	FROM (
+	SELECT ARRAY<INT64>[1, 2, 3] AS array1
+	)
+
+-- Unflattening an array. Outputs a singular row for customer 1 with 3 items for that customer appearing on three lines.
+SELECT 'a' AS col1, ['value1', 'value2', 'value3'] AS array1
+	
+-- Flattening an array. Returns one row for each array element.
+SELECT 'a' as col1, array1, customer
+FROM UNNEST(['value1', 'value2', 'value3']) AS array1
 
 -- NESTED FIELDS
 	-- UNNESTING (can have ',' instead of 'LEFT JOIN')
@@ -219,51 +253,6 @@ SELECT
 FROM json
 , UNNEST(js) AS js
 
-
-
-
-
-
-
-
-
-
-
-	
-
-
--- Sort later !!! --
--- OFFSET. Displays an array index starting from 0.
-SELECT array1[OFFSET(2)] -- value3
-AS zero_indexed
-FROM array1
-
-	-- WITH OFFSET. Labels each elemen when unnested.
-	SELECT items, customer
-	FROM UNNEST(['value1', 'value2', 'value3'] AS items
-	WITH OFFSET AS index
-	ORDER BY index
-
--- ORDINAL. Displays an array index starting from 1.
-SELECT array1[ORDINAL(2)] -- value2
-AS one_indexed
-FROM array1
-
--- ARRAY_LENGTH
--- OFFSET. Displays an array index starting from 0.
-SELECT ARRAY_LENGTH(array1) -- value3
-AS zero_size
-FROM array1
-
--- Unflattening an array. Outputs a singular row for customer 1 with 3 items for that customer appearing on three lines.
-SELECT
-	['value1', 'value2', 'value3'] AS item
-	'customer1' AS customer
-	
--- Flattening an array. Returns one row for each array element.
-SELECT items, customer
-FROM UNNEST(['value1', 'value2', 'value3'] AS items
-CROSS JOIN (SELECT 'customer1' AS customer) -- CROSS JOIN is optional to include, put a comma after items
 
 -- Author: Konstantin
 
