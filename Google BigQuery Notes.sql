@@ -1,6 +1,6 @@
 
 -- BigQuery standard syntax
--- Updated: 2019-10-31
+-- Updated: 2020-02-27
 
 							---------- GENERAL -----------
 
@@ -226,7 +226,7 @@ WHERE datepartition BETWEEN (SELECT start_date FROM date_ranges) AND (SELECT end
 SELECT col1, RAND() FROM table1
 ORDER BY RAND() ASC
 
--- Split the comma-separated list of dependencies into one per row
+-- Split a comma-separated list of dependencies into one per row
 WITH raw AS
 (
   SELECT 'a,b,c' AS col1
@@ -238,22 +238,56 @@ FROM raw AS r
 
 -- Convert tabular table format to a 'skinny' format
 WITH Input AS (
-  SELECT 1 AS col1, 2 AS col2, 3 AS col3
-  UNION ALL
-  SELECT 3, 4, 5
+  SELECT 1 AS col1, 2 AS col2, STRUCT(3, 4, 5) AS to_pivot
 ), json AS
 (
-  SELECT 
-      SPLIT(REPLACE(REPLACE(REPLACE(TO_JSON_STRING(Input), '"', ''),'{', ''),'}', '') , ',') AS js
+  SELECT
+	  col1,
+	  col2,
+      SPLIT(REPLACE(REPLACE(REPLACE(TO_JSON_STRING(to_pivot), '"', ''),'{', ''),'}', '') , ',') AS js
   FROM Input AS Input
 )
-SELECT 
+SELECT
+  col1,
+  col2,
   SPLIT(js, ':')[OFFSET(0)] col_name,
   SPLIT(js, ':')[OFFSET(1)] value
 FROM json
 , UNNEST(js) AS js
 
+-- STRING_AGG. Returns a value (either STRING or BYTES) obtained by concatenating non-null values.
+SELECT 
+  STRING_AGG(CAST(u.column1 AS STRING))
+FROM table1
+LEFT JOIN UNNEST(nested_column) AS u
+
+-- REGEX_EXTRACT. Extract text using a regular expression.
+SELECT 
+  DISTINCT column1, 
+  REGEXP_EXTRACT(column1, 'text-(.*?)$') 
+FROM table1
+
+-- SELECT * REPLACE(). Replaces 
+SELECT 
+  *  REPLACE ('new_value' AS existing_column)
+FROM `bigquery-analytics-workbench.team_productanalytics.etl_status`
+
+-- Custom Functions. (Only SQL and JavaScript is supported).
+CREATE TEMPORARY FUNCTION DoSomething(x INT64)
+RETURNS FLOAT64
+  LANGUAGE js AS """
+  return Math.floor(Math.random() * x)  ; -- A number between 0 and 1
+""";
+
+SELECT DoSomething(100)
+
+-- Symmetric Aggregates
+SUM(DISTINCT big_unique_number + total) - SUM(DISTINCT big_unique_number)
+
+
 
 -- Author: Konstantin
 
 -- https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-and-operators
+-- https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-and-operators#string_agg
+-- https://help.looker.com/hc/en-us/articles/360023722974-A-Simple-Explanation-of-Symmetric-Aggregates-or-Why-On-Earth-Does-My-SQL-Look-Like-That-
