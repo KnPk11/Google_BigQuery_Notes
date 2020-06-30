@@ -1,22 +1,33 @@
 
 -- BigQuery standard syntax
--- Updated: 2020-02-27
+-- Updated: 2020-06-18
 
 							---------- GENERAL -----------
 
 -- CREATING TABLES WITH A COLUMN LIST
-CREATE TABLE `project.dataset.table1` (
-  column1 {TYPE},
-  column2 {TYPE}
-)
+	CREATE TABLE `project.dataset.table1` (
+	  column1 {TYPE},
+	  column2 {TYPE}
+	)
 
 -- CREATE (OR REPLACE) TABLES WITH A SELECT *
-CREATE OR REPLACE `project.dataset.table1` AS
-{query}
+	CREATE OR REPLACE `project.dataset.table1` AS
+	{query}
+	
+-- CREATE TABLES WITH DESCRIPTION/EXPIRATION DATES
+	CREATE TABLE `project.dataset.table1`
+
+	OPTIONS(
+	   expiration_timestamp=TIMESTAMP "2020-07-02 00:00:00 UTC",
+	   description="An archived copy that expires automatically"
+	 )
+
+	AS
+	{query}
 
 -- INSERT. Inserts data into a table with/without column list supplied
-INSERT `project.dataset.table1`
-{query}
+	INSERT `project.dataset.table1`
+	{query}
 
 -- UPDATE. Updates column values (use WHERE 1 = 1 if updating without a 'WHERE' statement)
 	UPDATE `project.dataset.table1`
@@ -163,11 +174,11 @@ INSERT `project.dataset.table1`
 	)
 
 -- Unflattening an array. Outputs a singular row for customer 1 with 3 items for that customer appearing on three lines.
-SELECT 'a' AS col1, ['value1', 'value2', 'value3'] AS array1
+	SELECT 'a' AS col1, ['value1', 'value2', 'value3'] AS array1
 	
 -- Flattening an array. Returns one row for each array element.
-SELECT 'a' as col1, array1, customer
-FROM UNNEST(['value1', 'value2', 'value3']) AS array1
+	SELECT 'a' as col1, array1, customer
+	FROM UNNEST(['value1', 'value2', 'value3']) AS array1
 
 -- NESTED FIELDS
 	-- UNNESTING (can have ',' instead of 'LEFT JOIN')
@@ -185,104 +196,108 @@ FROM UNNEST(['value1', 'value2', 'value3']) AS array1
 	SELECT col1, ARRAY_AGG(STRUCT(col2, col3)) AS nested
 	FROM table1
 	GROUP BY col1
+	
+-- PARAMETERS
+	DECLARE date1 DATE DEFAULT CURRENT_DATE();
+	SET date1 = DATE('2020-03-07');
+
+	SELECT column1 FROM table1 WHERE Date = date1
 
 
 ----- SYSTEM FUNCTIONS ------
 -- Table basics (location, modification time, row count, size)
-SELECT *, TIMESTAMP_MILLIS(last_modified_time)
-FROM `project.dataset.__TABLES__` 
-WHERE table_id = 'table1'
+	SELECT *, TIMESTAMP_MILLIS(last_modified_time)
+	FROM `project.dataset.__TABLES__` 
+	WHERE table_id = 'table1'
 
 -- INFORMATION_SCHEMA. Query table schema
-SELECT * FROM `project.dataset.table1`.COLUMNS 
-WHERE table_name = 'table1'
+	SELECT * FROM `project.dataset.table1`.COLUMNS 
+	WHERE table_name = 'table1'
 
 -- Count the number of nested and total columns for a table
-SELECT sum(CASE WHEN field_path NOT LIKE '%STRUCT%' THEN 1 END) AS unnested_column_numbers 
-     , sum(CASE WHEN field_path NOT LIKE '%.%' THEN 1 END) AS nested_column_numbers 
-FROM `project.dataset.INFORMATION_SCHEMA.COLUMN_FIELD_PATHS` a 
-WHERE table_name IN ('table1')
+	SELECT sum(CASE WHEN field_path NOT LIKE '%STRUCT%' THEN 1 END) AS unnested_column_numbers 
+		 , sum(CASE WHEN field_path NOT LIKE '%.%' THEN 1 END) AS nested_column_numbers 
+	FROM `project.dataset.INFORMATION_SCHEMA.COLUMN_FIELD_PATHS` a 
+	WHERE table_name IN ('table1')
 	
 ------ OTHER ------
--- \. Escaping characters
-
--- Variables
-	-- Named parameters (variables) are supported in BigQuery only through the API using standard SQL, not the web UI.
+-- Escaping characters
+	\{character}
 
 -- Schema types:
 	RECORD {datatype}	: A collection of schema elements in the same table
 	RECORD REPEATED		: A collection of schema elements in the same table
 
 ------ CUSTOM SCRIPTS ------
--- Using the same date range in multiple parts of the query as a parameter
-WITH date_ranges AS
-(
-  SELECT TIMESTAMP('2017-01-01') AS start_date, TIMESTAMP('2017-12-31') AS end_date
-), 
-{query}
-WHERE datepartition BETWEEN (SELECT start_date FROM date_ranges) AND (SELECT end_date FROM date_ranges)
+-- Using the same date range in multiple parts of the query without declaring parameters.
+	WITH date_ranges AS
+	(
+	  SELECT TIMESTAMP('2017-01-01') AS start_date, TIMESTAMP('2017-12-31') AS end_date
+	), 
+	{query}
+	WHERE datepartition BETWEEN (SELECT start_date FROM date_ranges) AND (SELECT end_date FROM date_ranges)
 
 -- Randomise the result set of a table
-SELECT col1, RAND() FROM table1
-ORDER BY RAND() ASC
+	SELECT col1, RAND() FROM table1
+	ORDER BY RAND() ASC
 
 -- Split a comma-separated list of dependencies into one per row
-WITH raw AS
-(
-  SELECT 'a,b,c' AS col1
-)
-SELECT
-    SUBSTR(col1, STRPOS(col1, '.')+1, LENGTH(col1)) AS split
-FROM raw AS r
-, UNNEST(SPLIT(col1, ',')) AS col1
+	WITH raw AS
+	(
+	  SELECT 'a,b,c' AS col1
+	)
+	SELECT
+		SUBSTR(col1, STRPOS(col1, '.')+1, LENGTH(col1)) AS split
+	FROM raw AS r
+	, UNNEST(SPLIT(col1, ',')) AS col1
 
 -- Convert tabular table format to a 'skinny' format
-WITH Input AS (
-  SELECT 1 AS col1, 2 AS col2, STRUCT(3, 4, 5) AS to_pivot
-), json AS
-(
-  SELECT
+	WITH Input AS (
+	  SELECT 1 AS col1, 2 AS col2, STRUCT(3, 4, 5) AS to_pivot
+	), json AS
+	(
+	  SELECT
+		  col1,
+		  col2,
+		  SPLIT(REPLACE(REPLACE(REPLACE(TO_JSON_STRING(to_pivot), '"', ''),'{', ''),'}', '') , ',') AS js
+	  FROM Input AS Input
+	)
+	SELECT
 	  col1,
 	  col2,
-      SPLIT(REPLACE(REPLACE(REPLACE(TO_JSON_STRING(to_pivot), '"', ''),'{', ''),'}', '') , ',') AS js
-  FROM Input AS Input
-)
-SELECT
-  col1,
-  col2,
-  SPLIT(js, ':')[OFFSET(0)] col_name,
-  SPLIT(js, ':')[OFFSET(1)] value
-FROM json
-, UNNEST(js) AS js
+	  SPLIT(js, ':')[OFFSET(0)] col_name,
+	  SPLIT(js, ':')[OFFSET(1)] value
+	FROM json
+	, UNNEST(js) AS js
 
 -- STRING_AGG. Returns a value (either STRING or BYTES) obtained by concatenating non-null values.
-SELECT 
-  STRING_AGG(CAST(u.column1 AS STRING))
-FROM table1
-LEFT JOIN UNNEST(nested_column) AS u
+	SELECT 
+	  STRING_AGG(CAST(u.column1 AS STRING))
+	FROM table1
+	LEFT JOIN UNNEST(nested_column) AS u
 
 -- REGEX_EXTRACT. Extract text using a regular expression.
-SELECT 
-  DISTINCT column1, 
-  REGEXP_EXTRACT(column1, 'text-(.*?)$') 
-FROM table1
+	SELECT 
+	  DISTINCT column1, 
+	  REGEXP_EXTRACT(column1, 'text-(.*?)$') 
+	FROM table1
 
 -- SELECT * REPLACE(). Replaces 
-SELECT 
-  *  REPLACE ('new_value' AS existing_column)
-FROM `bigquery-analytics-workbench.team_productanalytics.etl_status`
+	SELECT 
+	  *  REPLACE ('new_value' AS existing_column)
+	FROM `bigquery-analytics-workbench.team_productanalytics.etl_status`
 
 -- Custom Functions. (Only SQL and JavaScript is supported).
-CREATE TEMPORARY FUNCTION DoSomething(x INT64)
-RETURNS FLOAT64
-  LANGUAGE js AS """
-  return Math.floor(Math.random() * x)  ; -- A number between 0 and 1
-""";
+	CREATE TEMPORARY FUNCTION DoSomething(x INT64)
+	RETURNS FLOAT64
+	  LANGUAGE js AS """
+	  return Math.floor(Math.random() * x)  ; -- A number between 0 and 1
+	""";
 
-SELECT DoSomething(100)
+	SELECT DoSomething(100)
 
 -- Symmetric Aggregates
-SUM(DISTINCT big_unique_number + total) - SUM(DISTINCT big_unique_number)
+	SUM(DISTINCT big_unique_number + total) - SUM(DISTINCT big_unique_number)
 
 
 
